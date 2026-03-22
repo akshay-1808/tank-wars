@@ -6,10 +6,100 @@ const WebSocket = require('ws');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
+  const url = req.url.split('?')[0];
+
+  // ── robots.txt ──
+  if (url === '/robots.txt') {
+    fs.readFile(path.join(__dirname, 'robots.txt'), (err, data) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(data);
+    });
+    return;
+  }
+
+  // ── sitemap.xml ──
+  if (url === '/sitemap.xml') {
+    fs.readFile(path.join(__dirname, 'sitemap.xml'), (err, data) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': 'application/xml' });
+      res.end(data);
+    });
+    return;
+  }
+
+  // ── OG image (generated as SVG, served as image/svg+xml) ──
+  if (url === '/og-image.png') {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#080b0e"/>
+          <stop offset="100%" stop-color="#0d1a2a"/>
+        </linearGradient>
+        <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#00e5ff"/>
+          <stop offset="50%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#ff3d6b"/>
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="4" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- Background -->
+      <rect width="1200" height="630" fill="url(#bg)"/>
+      <!-- Grid -->
+      <g stroke="#1e2a38" stroke-width="0.8" opacity="0.5">
+        ${Array.from({length:30},(_,i)=>`<line x1="${i*40}" y1="0" x2="${i*40}" y2="630"/>`).join('')}
+        ${Array.from({length:16},(_,i)=>`<line x1="0" y1="${i*40}" x2="1200" y2="${i*40}"/>`).join('')}
+      </g>
+      <!-- Border glow lines -->
+      <rect x="0" y="0" width="1200" height="4" fill="#00e5ff" opacity="0.5"/>
+      <rect x="0" y="626" width="1200" height="4" fill="#00e5ff" opacity="0.5"/>
+      <rect x="0" y="0" width="4" height="630" fill="#00e5ff" opacity="0.5"/>
+      <rect x="1196" y="0" width="4" height="630" fill="#00e5ff" opacity="0.5"/>
+      <!-- Tank icon (center left) -->
+      <g transform="translate(200,315)" filter="url(#glow)">
+        <rect x="-60" y="-40" width="120" height="80" rx="12" fill="#00e5ff" opacity="0.9"/>
+        <rect x="-70" y="-42" width="20" height="84" rx="4" fill="#004455"/>
+        <rect x="50" y="-42" width="20" height="84" rx="4" fill="#004455"/>
+        <circle cx="0" cy="0" r="24" fill="#00b8cc"/>
+        <rect x="18" y="-7" width="60" height="14" rx="7" fill="#ccffff"/>
+      </g>
+      <!-- Title -->
+      <text x="600" y="260" font-family="Arial Black, sans-serif" font-size="110" font-weight="900"
+        text-anchor="middle" fill="url(#title)" letter-spacing="12" filter="url(#glow)">TANK WARS</text>
+      <!-- Subtitle -->
+      <text x="600" y="330" font-family="Arial, sans-serif" font-size="28"
+        text-anchor="middle" fill="#4a6070" letter-spacing="6">FREE ONLINE MULTIPLAYER</text>
+      <!-- Feature pills -->
+      <g transform="translate(600,420)">
+        <rect x="-380" y="-22" width="170" height="44" rx="22" fill="#0d1117" stroke="#00e5ff" stroke-width="1.5"/>
+        <text x="-295" y="7" font-family="Arial, sans-serif" font-size="18" fill="#00e5ff" text-anchor="middle">⚡ Quick Play</text>
+        <rect x="-180" y="-22" width="160" height="44" rx="22" fill="#0d1117" stroke="#ffd700" stroke-width="1.5"/>
+        <text x="-100" y="7" font-family="Arial, sans-serif" font-size="18" fill="#ffd700" text-anchor="middle">🔒 Private</text>
+        <rect x="-0" y="-22" width="180" height="44" rx="22" fill="#0d1117" stroke="#44ff88" stroke-width="1.5"/>
+        <text x="90" y="7" font-family="Arial, sans-serif" font-size="18" fill="#44ff88" text-anchor="middle">👥 5 Players</text>
+        <rect x="210" y="-22" width="180" height="44" rx="22" fill="#0d1117" stroke="#ff3d6b" stroke-width="1.5"/>
+        <text x="300" y="7" font-family="Arial, sans-serif" font-size="18" fill="#ff3d6b" text-anchor="middle">🎮 No Download</text>
+      </g>
+      <!-- URL -->
+      <text x="600" y="560" font-family="monospace" font-size="22"
+        text-anchor="middle" fill="#4a6070" letter-spacing="2">tankwars.up.railway.app</text>
+    </svg>`;
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
+    res.end(svg);
+    return;
+  }
+
+  // ── Default: serve game ──
   const fp = path.join(__dirname, 'client.html');
   fs.readFile(fp, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.writeHead(200, {
+      'Content-Type': 'text/html',
+      'Cache-Control': 'no-cache'
+    });
     res.end(data);
   });
 });
