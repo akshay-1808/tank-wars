@@ -1,0 +1,16 @@
+{
+  "name": "tank-wars-online",
+  "version": "2.0.0",
+  "description": "Online multiplayer top-down tank shooter",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

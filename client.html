@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TANK WARS</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;900&family=Share+Tech+Mono&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#080b0e;--panel:#0d1117;--border:#1e2a38;
+  --accent:#00e5ff;--accent2:#ff3d6b;--gold:#ffd700;
+  --green:#44ff88;--text:#c8d8e8;--dim:#4a6070;
+}
+body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monospace;overflow:hidden;height:100vh;display:flex;align-items:center;justify-content:center;}
+
+/* ── SCREENS ── */
+.screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:100;}
+.screen.hidden{display:none;}
+
+/* ── SHARED CARD ── */
+.card{background:var(--panel);border:1px solid var(--border);padding:40px 48px;position:relative;min-width:420px;clip-path:polygon(0 0,calc(100% - 18px) 0,100% 18px,100% 100%,18px 100%,0 calc(100% - 18px));}
+.card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,229,255,.04) 0%,transparent 60%);pointer-events:none;}
+.logo{font-family:'Orbitron',sans-serif;font-size:44px;font-weight:900;letter-spacing:8px;background:linear-gradient(90deg,var(--accent),#fff,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;}
+.tagline{text-align:center;color:var(--dim);letter-spacing:4px;font-size:10px;margin-top:4px;margin-bottom:32px;}
+.field-label{font-size:10px;letter-spacing:3px;color:var(--dim);margin-bottom:6px;text-transform:uppercase;}
+.inp{display:block;width:100%;background:transparent;border:none;border-bottom:2px solid var(--border);color:var(--text);font-family:'Share Tech Mono',monospace;font-size:16px;padding:8px 4px;outline:none;letter-spacing:2px;margin-bottom:20px;transition:border-color .2s;}
+.inp:focus{border-bottom-color:var(--accent);}
+.inp.big{font-family:'Orbitron',sans-serif;font-size:28px;text-align:center;letter-spacing:10px;color:var(--accent);}
+.btn{display:block;width:100%;background:linear-gradient(135deg,var(--accent),#0080aa);color:#000;border:none;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:4px;padding:13px 20px;cursor:pointer;margin-top:8px;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));transition:filter .2s,transform .15s;}
+.btn:hover{filter:brightness(1.25);transform:scale(1.02);}
+.btn:disabled{opacity:.4;pointer-events:none;}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--dim);clip-path:none;}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent);filter:none;}
+.btn.danger{background:linear-gradient(135deg,var(--accent2),#880022);}
+.btn.green{background:linear-gradient(135deg,var(--green),#008844);}
+.divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--dim);font-size:11px;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.err{color:var(--accent2);font-size:12px;letter-spacing:1px;min-height:16px;margin-top:8px;text-align:center;}
+.status{color:var(--dim);font-size:11px;letter-spacing:2px;text-align:center;min-height:16px;margin-top:8px;}
+
+/* ── WAITING ROOM ── */
+#waiting-room{flex-direction:column;gap:0;}
+.wr-inner{display:flex;gap:24px;width:900px;max-width:96vw;}
+.wr-left{flex:1;}
+.wr-right{width:260px;}
+.section-title{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:4px;color:var(--dim);margin-bottom:12px;text-transform:uppercase;}
+.lobby-id-display{font-family:'Orbitron',sans-serif;font-size:52px;font-weight:900;color:var(--accent);letter-spacing:16px;text-align:center;text-shadow:0 0 30px rgba(0,229,255,.4);margin:8px 0 4px;}
+.lobby-id-hint{text-align:center;color:var(--dim);font-size:11px;letter-spacing:2px;margin-bottom:24px;}
+.player-list{display:flex;flex-direction:column;gap:8px;margin-bottom:20px;}
+.player-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.02);border:1px solid var(--border);}
+.player-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.player-name{flex:1;font-size:13px;}
+.player-badge{font-size:9px;letter-spacing:2px;padding:2px 7px;border:1px solid;font-family:'Orbitron',sans-serif;}
+.badge-admin{color:var(--gold);border-color:var(--gold);}
+.badge-ready{color:var(--green);border-color:var(--green);}
+.badge-waiting{color:var(--dim);border-color:var(--dim);}
+.kick-btn{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;padding:2px 6px;font-family:monospace;}
+.kick-btn:hover{color:var(--accent2);}
+.rules-box{border:1px solid var(--border);padding:14px;font-size:11px;line-height:2;color:var(--dim);}
+.rules-box span{color:var(--accent);}
+.promoted-toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#000;font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:3px;padding:10px 24px;z-index:999;display:none;}
+
+/* ── GAME ── */
+#game-screen{display:none;position:fixed;inset:0;background:var(--bg);z-index:50;}
+#canvas-wrap{position:relative;display:inline-block;}
+canvas{display:block;cursor:crosshair;}
+#hud{position:absolute;inset:0;pointer-events:none;}
+
+/* Health */
+#hp-wrap{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);width:280px;display:flex;flex-direction:column;align-items:center;gap:5px;}
+#hp-label{font-size:9px;letter-spacing:3px;color:var(--dim);}
+#hp-track{width:100%;height:9px;background:#111820;border:1px solid var(--border);}
+#hp-fill{height:100%;background:linear-gradient(90deg,var(--accent2),#ff9c44);transition:width .12s;box-shadow:0 0 8px rgba(255,60,107,.5);}
+
+/* Powerup status */
+#pup-row{position:absolute;bottom:56px;left:50%;transform:translateX(-50%);display:flex;gap:8px;}
+.pup-chip{background:rgba(0,0,0,.65);border:1px solid var(--accent);padding:3px 10px;font-size:11px;color:var(--accent);letter-spacing:1px;}
+
+/* Leaderboard */
+#lb{position:absolute;top:14px;right:14px;width:200px;background:rgba(8,11,14,.9);border:1px solid var(--border);}
+#lb-title{background:var(--border);padding:7px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:4px;color:var(--dim);text-align:center;}
+.lb-row{display:flex;align-items:center;gap:7px;padding:6px 10px;border-bottom:1px solid rgba(30,42,56,.3);font-size:11px;}
+.lb-num{font-family:'Orbitron',sans-serif;font-size:8px;color:var(--dim);width:14px;}
+.lb-num.g{color:var(--gold);}
+.lb-dot2{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.lb-nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lb-sc{font-family:'Orbitron',sans-serif;font-size:10px;color:var(--gold);min-width:36px;text-align:right;}
+.lb-kd{font-size:9px;color:var(--dim);min-width:36px;text-align:right;}
+
+/* Kill feed */
+#kf{position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:5px;}
+.kf-item{background:rgba(0,0,0,.72);border-left:3px solid var(--accent2);padding:5px 10px;font-size:11px;animation:kfOut 4s forwards;white-space:nowrap;}
+@keyframes kfOut{0%{opacity:1}75%{opacity:1}100%{opacity:0}}
+
+/* Respawn */
+#respawn{position:absolute;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;}
+#respawn.show{display:flex;}
+#respawn-txt{font-family:'Orbitron',sans-serif;font-size:26px;color:var(--accent2);letter-spacing:6px;}
+#respawn-num{font-family:'Orbitron',sans-serif;font-size:56px;color:#fff;}
+
+/* Admin game controls */
+#admin-controls{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;}
+.ac-btn{background:rgba(8,11,14,.85);border:1px solid var(--border);color:var(--dim);font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;padding:6px 14px;cursor:pointer;pointer-events:all;}
+.ac-btn:hover{border-color:var(--accent2);color:var(--accent2);}
+
+#corner-info{position:absolute;bottom:14px;right:14px;font-size:10px;color:var(--dim);letter-spacing:1px;}
+
+/* Timer */
+#game-timer{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-family:'Orbitron',sans-serif;font-size:28px;font-weight:700;color:#fff;letter-spacing:4px;text-shadow:0 0 20px rgba(0,229,255,.5);pointer-events:none;}
+#game-timer.warning{color:var(--accent2);text-shadow:0 0 20px rgba(255,61,107,.7);animation:timerPulse .6s infinite alternate;}
+@keyframes timerPulse{from{opacity:1}to{opacity:.5}}
+
+/* Spawn protection */
+.sp-ring{pointer-events:none;}
+
+/* Game Over overlay */
+#game-over{position:absolute;inset:0;background:rgba(0,0,0,.78);display:none;align-items:center;justify-content:center;flex-direction:column;gap:0;pointer-events:none;}
+#game-over.show{display:flex;}
+#go-title{font-family:'Orbitron',sans-serif;font-size:36px;font-weight:900;letter-spacing:8px;color:var(--gold);margin-bottom:8px;}
+#go-winner{font-family:'Orbitron',sans-serif;font-size:18px;letter-spacing:4px;color:#fff;margin-bottom:24px;}
+#go-scores{display:flex;flex-direction:column;gap:6px;min-width:280px;}
+.go-row{display:flex;align-items:center;gap:10px;padding:8px 14px;background:rgba(255,255,255,.04);border:1px solid var(--border);font-size:13px;}
+.go-rank{font-family:'Orbitron',sans-serif;font-size:10px;color:var(--dim);width:20px;}
+.go-dot{width:9px;height:9px;border-radius:50%;}
+.go-name{flex:1;}
+.go-pts{font-family:'Orbitron',sans-serif;font-size:12px;color:var(--gold);}
+.go-kd{font-size:11px;color:var(--dim);}
+#go-returning{color:var(--dim);font-size:11px;letter-spacing:3px;margin-top:20px;}
+</style>
+</head>
+<body>
+
+<!-- ─── SCREEN 1: Home ─────────────────────────────────────── -->
+<div id="home-screen" class="screen">
+  <div class="card">
+    <div class="logo">TANK WARS</div>
+    <div class="tagline">ONLINE MULTIPLAYER · UP TO 5 PLAYERS</div>
+    <div class="field-label">Your Name</div>
+    <input class="inp" id="home-name" placeholder="enter callsign..." maxlength="12" autocomplete="off">
+    <button class="btn green" id="btn-create">⊞ CREATE LOBBY</button>
+    <div class="divider">or</div>
+    <div class="field-label">Lobby ID</div>
+    <input class="inp big" id="join-id" placeholder="0000" maxlength="4" autocomplete="off">
+    <button class="btn" id="btn-join">→ JOIN LOBBY</button>
+    <div id="home-err" class="err"></div>
+    <div id="home-status" class="status"></div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 2: Waiting Room ────────────────────────────── -->
+<div id="waiting-room" class="screen hidden">
+  <div class="wr-inner">
+    <!-- Left: lobby info + players -->
+    <div class="card wr-left">
+      <div class="section-title">Lobby ID — Share with anyone, anywhere</div>
+      <div class="lobby-id-display" id="wr-lobbyid">----</div>
+      <div class="lobby-id-hint">Friends can join from anywhere in the world</div>
+      <div class="section-title">Players (<span id="wr-count">0</span>/5)</div>
+      <div class="player-list" id="wr-players"></div>
+      <div id="wr-err" class="err"></div>
+      <!-- Admin buttons -->
+      <div id="wr-admin-btns" style="display:none;">
+        <button class="btn green" id="btn-start" style="margin-bottom:8px;">▶ START GAME</button>
+        <button class="btn ghost danger" id="btn-cancel-lobby">✕ CLOSE LOBBY</button>
+      </div>
+      <!-- Non-admin -->
+      <div id="wr-player-btns">
+        <button class="btn" id="btn-ready">✓ READY UP</button>
+      </div>
+      <div id="wr-status" class="status" style="margin-top:12px;"></div>
+    </div>
+    <!-- Right: rules -->
+    <div class="card wr-right" style="align-self:flex-start;">
+      <div class="section-title">Controls</div>
+      <div class="rules-box">
+        <span>WASD</span> — Move<br>
+        <span>MOUSE</span> — Aim<br>
+        <span>HOLD LMB</span> — Fire
+      </div>
+      <div class="section-title" style="margin-top:20px;">Power-ups</div>
+      <div class="rules-box">
+        <span>🛡️ Shield</span> — immune 6s<br>
+        <span>⚡ Rapid</span> — 2× fire 6s<br>
+        <span>💥 Spread</span> — triple shot<br>
+        <span>❤️ HP</span> — +40 health
+      </div>
+      <div class="section-title" style="margin-top:20px;">Scoring</div>
+      <div class="rules-box">
+        Kill = <span>+100 pts</span><br>
+        Power-up = <span>+10 pts</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 3: Game ────────────────────────────────────── -->
+<div id="game-screen">
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="hud">
+      <div id="kf"></div>
+      <div id="admin-controls" style="display:none;">
+        <button class="ac-btn" id="ac-stop">■ END ROUND</button>
+      </div>
+      <div id="lb">
+        <div id="lb-title">LEADERBOARD</div>
+        <div id="lb-list"></div>
+      </div>
+      <div id="hp-wrap">
+        <div id="hp-label">HULL INTEGRITY</div>
+        <div id="hp-track"><div id="hp-fill"></div></div>
+      </div>
+      <div id="pup-row"></div>
+      <div id="respawn"><div id="respawn-txt">DESTROYED</div><div id="respawn-num">3</div></div>
+      <div id="game-timer">10:00</div>
+    <div id="corner-info">LAN ● ONLINE</div>
+    <div id="game-over">
+      <div id="go-title">ROUND OVER</div>
+      <div id="go-winner"></div>
+      <div id="go-scores"></div>
+      <div id="go-returning"></div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="promoted-toast" id="promo-toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────
+let ws, myId, myLobbyId, isAdmin=false;
+let gameState={players:{},bullets:[],powerups:[]};
+let walls=[], mapW=1200, mapH=800;
+let keys={}, mouseAngle=0, mouseDown=false;
+let lastInput={}, lastPlayers={};
+let prevAlive=true, respawnTick=null;
+let frame=0;
+let gameEndTime=0;
+let audioCtx=null;
+// Bullet sound state: track last N bullets to detect new ones
+let knownBulletIds=new Set();
+let prevBulletCount=0;
+let loopRunning=false;
+
+// ─── Routing ─────────────────────────────────────────────────
+function show(id){
+  ['home-screen','waiting-room','game-screen'].forEach(s=>{
+    const el=document.getElementById(s);
+    if(el) el.classList.add('hidden');
+    if(el) el.style.display='';
+  });
+  const target=document.getElementById(id);
+  if(target){
+    target.classList.remove('hidden');
+    if(id==='game-screen') target.style.display='block';
+  }
+}
+
+// ─── Connect ─────────────────────────────────────────────────
+function getWsUrl(){
+  // Auto-detect: use wss:// on https, ws:// on http, always same host
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const host = location.host || 'localhost:3000';
+  return `${proto}://${host}`;
+}
+function connectWS(onOpen){
+  const url=getWsUrl();
+  setStatus('home','CONNECTING...');
+  if(ws){ try{ws.close();}catch(e){} }
+  ws=new WebSocket(url);
+  const t=setTimeout(()=>{
+    if(ws.readyState!==WebSocket.OPEN){
+      ws.close();
+      setErr('home','Cannot connect to server. Is it running?');
+    }
+  },5000);
+  ws.onopen=()=>{ clearTimeout(t); setStatus('home',''); onOpen(); };
+  ws.onerror=()=>{ clearTimeout(t); setErr('home','Connection failed. Check server is running.'); };
+  ws.onmessage=onMessage;
+  ws.onclose=onClose;
+}
+
+// ─── Messages ─────────────────────────────────────────────────
+function onMessage(e){
+  const msg=JSON.parse(e.data);
+
+  if(msg.type==='created'||msg.type==='joined'){
+    myId=msg.playerId; myLobbyId=msg.lobbyId; isAdmin=msg.isAdmin;
+    document.getElementById('wr-lobbyid').textContent=myLobbyId;
+    document.getElementById('wr-admin-btns').style.display=isAdmin?'block':'none';
+    document.getElementById('wr-player-btns').style.display=isAdmin?'none':'block';
+    show('waiting-room');
+  }
+  else if(msg.type==='lobby_update'){
+    renderWaitingRoom(msg);
+  }
+  else if(msg.type==='game_start'){
+    walls=msg.walls; mapW=msg.mapW; mapH=msg.mapH;
+    gameEndTime=msg.gameEndTime||0;
+    knownBulletIds=new Set();
+    initGameState(msg.players);
+    show('game-screen');
+    document.getElementById('admin-controls').style.display=isAdmin?'flex':'none';
+    resizeCanvas();
+    if(!loopRunning){ loopRunning=true; requestAnimationFrame(loop); }
+  }
+  else if(msg.type==='game_over'){
+    showGameOver(msg);
+  }
+  else if(msg.type==='game_stopped'){
+    show('waiting-room');
+  }
+  else if(msg.type==='state'){
+    updateGameState(msg);
+  }
+  else if(msg.type==='kill_feed'){
+    addKF(msg.killer,msg.killerColor,msg.victim,msg.victimColor);
+  }
+  else if(msg.type==='error'){
+    setErr('home', msg.msg);
+    setErr('wr', msg.msg);
+    setStatus('home','');
+  }
+  else if(msg.type==='kicked'){
+    alert('⚠ '+msg.msg); location.reload();
+  }
+  else if(msg.type==='promoted'){
+    isAdmin=true;
+    document.getElementById('wr-admin-btns').style.display='block';
+    document.getElementById('wr-player-btns').style.display='none';
+    document.getElementById('admin-controls').style.display='flex';
+    showToast(msg.msg);
+  }
+}
+
+function onClose(){
+  document.getElementById('corner-info').textContent='DISCONNECTED';
+  document.getElementById('corner-info').style.color='var(--accent2)';
+}
+
+// ─── Home screen ──────────────────────────────────────────────
+window.addEventListener('load',()=>{
+  show('home-screen');
+});
+
+document.getElementById('btn-create').addEventListener('click',()=>{
+  const name=document.getElementById('home-name').value.trim()||'Admin';
+  setErr('home','');
+  connectWS(()=>{ ws.send(JSON.stringify({type:'create_lobby',name})); });
+});
+
+document.getElementById('btn-join').addEventListener('click',doJoin);
+document.getElementById('join-id').addEventListener('keydown',e=>{if(e.key==='Enter')doJoin();});
+document.getElementById('join-id').addEventListener('input',e=>{
+  e.target.value=e.target.value.replace(/\D/g,'').substring(0,4);
+});
+
+function doJoin(){
+  const name=document.getElementById('home-name').value.trim()||'Player';
+  const id=document.getElementById('join-id').value.trim();
+  if(id.length!==4){setErr('home','Enter a 4-digit lobby ID');return;}
+  setErr('home','');
+  connectWS(()=>{ ws.send(JSON.stringify({type:'join_lobby',lobbyId:id,name})); });
+}
+
+// ─── Waiting room ─────────────────────────────────────────────
+let readyState=false;
+
+document.getElementById('btn-start').addEventListener('click',()=>{
+  ws.send(JSON.stringify({type:'start_game'}));
+});
+document.getElementById('btn-cancel-lobby').addEventListener('click',()=>{
+  ws.close(); location.reload();
+});
+document.getElementById('btn-ready').addEventListener('click',()=>{
+  readyState=!readyState;
+  ws.send(JSON.stringify({type:'set_ready',ready:readyState}));
+  document.getElementById('btn-ready').textContent=readyState?'✗ UNREADY':'✓ READY UP';
+  document.getElementById('btn-ready').style.background=readyState?'linear-gradient(135deg,var(--accent2),#880022)':'';
+});
+
+function renderWaitingRoom(msg){
+  const players=msg.players||[];
+  document.getElementById('wr-count').textContent=players.length;
+  const list=document.getElementById('wr-players');
+  list.innerHTML='';
+  players.forEach(p=>{
+    const row=document.createElement('div');
+    row.className='player-row';
+    const isMe=p.id===myId;
+    let badges='';
+    if(p.isAdmin) badges+=`<span class="player-badge badge-admin">ADMIN</span>`;
+    if(!p.isAdmin&&p.ready) badges+=`<span class="player-badge badge-ready">READY</span>`;
+    if(!p.isAdmin&&!p.ready) badges+=`<span class="player-badge badge-waiting">WAITING</span>`;
+    let kickBtn='';
+    if(isAdmin&&!p.isAdmin&&p.id!==myId) kickBtn=`<button class="kick-btn" onclick="kickPlayer('${p.id}')" title="Kick">✕</button>`;
+    row.innerHTML=`
+      <span class="player-dot" style="background:${p.color}"></span>
+      <span class="player-name" style="${isMe?'color:#fff;':''}">${p.name}${isMe?' <span style="color:var(--dim);font-size:10px;">(you)</span>':''}</span>
+      ${badges}${kickBtn}
+    `;
+    list.appendChild(row);
+  });
+
+  // Admin: enable start only if ≥2 players
+  if(isAdmin){
+    document.getElementById('btn-start').disabled=players.length<2;
+    document.getElementById('wr-status').textContent=
+      players.length<2?'Waiting for at least 1 more player...':
+      `${players.length} player${players.length>1?'s':''} in lobby. Ready to start!`;
+  } else {
+    const allReady=players.filter(p=>!p.isAdmin).every(p=>p.ready);
+    document.getElementById('wr-status').textContent=
+      allReady?'All players ready! Waiting for admin to start...':'Waiting for players to ready up...';
+  }
+}
+
+function kickPlayer(targetId){
+  ws.send(JSON.stringify({type:'kick_player',targetId}));
+}
+
+// ─── Admin in-game ────────────────────────────────────────────
+document.getElementById('ac-stop').addEventListener('click',()=>{
+  if(confirm('End the current round?')) ws.send(JSON.stringify({type:'stop_game'}));
+});
+
+// ─── Game state ───────────────────────────────────────────────
+function initGameState(players){
+  gameState={players:{},bullets:[],powerups:[]};
+  players.forEach(p=>{ gameState.players[p.id]=p; });
+  prevAlive=true; hideRespawn();
+}
+function updateGameState(msg){
+  if(msg.players){
+    const dict={};
+    msg.players.forEach(p=>{ dict[p.id]=p; });
+    gameState.players=dict;
+  }
+  if(msg.bullets){
+    // Detect new bullets for sound
+    const newIds=new Set(msg.bullets.map(b=>b.id));
+    msg.bullets.forEach(b=>{
+      if(!knownBulletIds.has(b.id)){
+        // New bullet fired — find if it belongs to me (by checking owner via color match)
+        const owner=Object.values(gameState.players).find(p=>p.color===b.color);
+        if(owner&&owner.id===myId) playFireSound();
+      }
+    });
+    knownBulletIds=newIds;
+    gameState.bullets=msg.bullets;
+  }
+  if(msg.powerups) gameState.powerups=msg.powerups;
+  if(msg.timeLeft!==undefined) updateTimer(msg.timeLeft);
+  const me=gameState.players[myId];
+  if(me){
+    updateHUD(me);
+    if(!me.alive&&prevAlive) showRespawn();
+    if(me.alive&&!prevAlive) hideRespawn();
+    prevAlive=me.alive;
+  }
+}
+
+// ─── Input ────────────────────────────────────────────────────
+window.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;sendInput();});
+window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;sendInput();});
+document.getElementById('canvas').addEventListener('mousemove',e=>{
+  const rect=e.target.getBoundingClientRect();
+  const sx=mapW/rect.width, sy=mapH/rect.height;
+  const mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
+  const me=gameState.players[myId];
+  if(me) mouseAngle=Math.atan2(my-me.y,mx-me.x);
+  sendInput();
+});
+document.getElementById('canvas').addEventListener('mousedown',()=>{mouseDown=true;sendInput();});
+document.getElementById('canvas').addEventListener('mouseup',()=>{mouseDown=false;sendInput();});
+
+function sendInput(){
+  if(!ws||ws.readyState!==WebSocket.OPEN) return;
+  const inp={type:'input',
+    up:!!(keys['w']||keys['arrowup']),
+    down:!!(keys['s']||keys['arrowdown']),
+    left:!!(keys['a']||keys['arrowleft']),
+    right:!!(keys['d']||keys['arrowright']),
+    shooting:mouseDown,angle:mouseAngle};
+  if(JSON.stringify(inp)!==JSON.stringify(lastInput)){
+    ws.send(JSON.stringify(inp)); lastInput=inp;
+  }
+}
+
+// ─── Audio ────────────────────────────────────────────────────
+function getAudioCtx(){
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return audioCtx;
+}
+function playFireSound(){
+  try{
+    const ac=getAudioCtx();
+    // Short sharp "pew" sound synthesized with oscillator + noise
+    const osc=ac.createOscillator();
+    const gain=ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type='square';
+    osc.frequency.setValueAtTime(420,ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80,ac.currentTime+0.08);
+    gain.gain.setValueAtTime(0.18,ac.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.1);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime+0.1);
+  }catch(e){}
+}
+
+// ─── Timer ─────────────────────────────────────────────────────
+function updateTimer(ms){
+  const el=document.getElementById('game-timer');
+  if(!el) return;
+  const total=Math.ceil(ms/1000);
+  const m=Math.floor(total/60);
+  const s=total%60;
+  el.textContent=m+':'+(s<10?'0':'')+s;
+  el.classList.toggle('warning', ms<=30000);
+}
+
+// ─── Game Over ─────────────────────────────────────────────────
+function showGameOver(msg){
+  const ov=document.getElementById('game-over');
+  ov.classList.add('show');
+  const w=msg.winner;
+  document.getElementById('go-winner').innerHTML=w
+    ?'<span style="color:'+w.color+'">'+w.name+'</span> wins with '+w.score+' pts'
+    :'No winner';
+  const sc=document.getElementById('go-scores');
+  sc.innerHTML=(msg.scores||[]).map((p,i)=>
+    '<div class="go-row">'
+    +'<span class="go-rank">'+(i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1)+'</span>'
+    +'<span class="go-dot" style="background:'+p.color+'"></span>'
+    +'<span class="go-name">'+p.name+'</span>'
+    +'<span class="go-kd">'+p.kills+'/'+p.deaths+'</span>'
+    +'<span class="go-pts">'+p.score+' pts</span>'
+    +'</div>'
+  ).join('');
+  let sec=5;
+  document.getElementById('go-returning').textContent='Returning to lobby in '+sec+'s...';
+  const iv=setInterval(()=>{
+    sec--;
+    const el2=document.getElementById('go-returning');
+    if(el2) el2.textContent='Returning to lobby in '+sec+'s...';
+    if(sec<=0){ clearInterval(iv); ov.classList.remove('show'); }
+  },1000);
+}
+
+// ─── Canvas ───────────────────────────────────────────────────
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+
+function resizeCanvas(){
+  const wrap=document.getElementById('canvas-wrap');
+  const pad=220;
+  const scale=Math.min((window.innerWidth-pad)/mapW,(window.innerHeight-30)/mapH,1);
+  canvas.width=mapW; canvas.height=mapH;
+  canvas.style.width=(mapW*scale)+'px';
+  canvas.style.height=(mapH*scale)+'px';
+}
+window.addEventListener('resize',resizeCanvas);
+
+// ─── HUD ──────────────────────────────────────────────────────
+function updateHUD(me){
+  document.getElementById('hp-fill').style.width=me.hp+'%';
+  const row=document.getElementById('pup-row');
+  row.innerHTML='';
+  if(me.shield) row.innerHTML+='<div class="pup-chip">🛡️ SHIELD</div>';
+  if(me.rapidfire) row.innerHTML+='<div class="pup-chip">⚡ RAPID</div>';
+  if(me.spread) row.innerHTML+='<div class="pup-chip">💥 SPREAD</div>';
+  // Leaderboard
+  const sorted=Object.values(gameState.players).sort((a,b)=>b.score-a.score);
+  document.getElementById('lb-list').innerHTML=sorted.map((p,i)=>`
+    <div class="lb-row" style="${p.id===myId?'background:rgba(0,229,255,.06)':''}">
+      <span class="lb-num ${i===0?'g':''}">${i===0?'▲':i+1}</span>
+      <span class="lb-dot2" style="background:${p.color}"></span>
+      <span class="lb-nm" style="${p.id===myId?'color:#fff':''}">${p.name}</span>
+      <span class="lb-sc">${p.score}</span>
+      <span class="lb-kd">${p.kills}/${p.deaths}</span>
+    </div>`).join('');
+}
+
+function addKF(killer,kc,victim,vc){
+  const kf=document.getElementById('kf');
+  const el=document.createElement('div');
+  el.className='kf-item';
+  el.innerHTML=`<span style="color:${kc}">${killer}</span> <span style="color:#888">eliminated</span> <span style="color:${vc}">${victim}</span>`;
+  kf.appendChild(el);
+  setTimeout(()=>el.remove(),4000);
+}
+
+let rtick=null,rc=3;
+function showRespawn(){
+  rc=3;
+  document.getElementById('respawn').classList.add('show');
+  document.getElementById('respawn-num').textContent=rc;
+  if(rtick) clearInterval(rtick);
+  rtick=setInterval(()=>{ rc--; document.getElementById('respawn-num').textContent=Math.max(0,rc); if(rc<=0)clearInterval(rtick); },1000);
+}
+function hideRespawn(){ document.getElementById('respawn').classList.remove('show'); if(rtick)clearInterval(rtick); }
+
+function showToast(msg){
+  const t=document.getElementById('promo-toast');
+  t.textContent=msg; t.style.display='block';
+  setTimeout(()=>t.style.display='none',3500);
+}
+
+function setErr(scope,msg){
+  const el=document.getElementById(scope==='home'?'home-err':'wr-err');
+  if(el) el.textContent=msg;
+}
+function setStatus(scope,msg){
+  const el=document.getElementById(scope==='home'?'home-status':'wr-status');
+  if(el) el.textContent=msg;
+}
+
+// ─── Render ───────────────────────────────────────────────────
+const PU_COLORS={shield:'#00aaff',rapidfire:'#ffcc00',spread:'#ff4488',hp:'#44ff88'};
+const PU_ICONS={shield:'🛡️',rapidfire:'⚡',spread:'💥',hp:'❤️'};
+
+function drawBG(){
+  ctx.fillStyle='#080b0e'; ctx.fillRect(0,0,mapW,mapH);
+  ctx.strokeStyle='rgba(30,42,56,.25)'; ctx.lineWidth=0.5;
+  for(let x=0;x<mapW;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,mapH);ctx.stroke();}
+  for(let y=0;y<mapH;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(mapW,y);ctx.stroke();}
+  // border glow
+  const g1=ctx.createLinearGradient(0,0,mapW,0);
+  g1.addColorStop(0,'rgba(0,229,255,.2)');g1.addColorStop(.5,'transparent');g1.addColorStop(1,'rgba(0,229,255,.2)');
+  ctx.fillStyle=g1; ctx.fillRect(0,0,mapW,3); ctx.fillRect(0,mapH-3,mapW,3);
+  const g2=ctx.createLinearGradient(0,0,0,mapH);
+  g2.addColorStop(0,'rgba(0,229,255,.2)');g2.addColorStop(.5,'transparent');g2.addColorStop(1,'rgba(0,229,255,.2)');
+  ctx.fillStyle=g2; ctx.fillRect(0,0,3,mapH); ctx.fillRect(mapW-3,0,3,mapH);
+}
+
+function drawWall(w){
+  ctx.save();
+  ctx.fillStyle='#1a2230'; ctx.fillRect(w.x,w.y,w.w,w.h);
+  ctx.fillStyle='#253040'; ctx.fillRect(w.x+2,w.y+2,w.w-4,w.h-4);
+  ctx.strokeStyle='#304560'; ctx.lineWidth=1; ctx.strokeRect(w.x,w.y,w.w,w.h);
+  ctx.strokeStyle='#1e2a38'; ctx.lineWidth=.5;
+  for(let gx=w.x;gx<w.x+w.w;gx+=20){ctx.beginPath();ctx.moveTo(gx,w.y);ctx.lineTo(gx,w.y+w.h);ctx.stroke();}
+  for(let gy=w.y;gy<w.y+w.h;gy+=20){ctx.beginPath();ctx.moveTo(w.x,gy);ctx.lineTo(w.x+w.w,gy);ctx.stroke();}
+  ctx.restore();
+}
+
+function drawPU(pu){
+  const col=PU_COLORS[pu.type]||'#fff';
+  const pulse=.7+.3*Math.sin(frame*.1);
+  ctx.save(); ctx.translate(pu.x,pu.y);
+  ctx.beginPath(); ctx.arc(0,0,14*pulse,0,Math.PI*2);
+  ctx.fillStyle=col+'33'; ctx.strokeStyle=col; ctx.lineWidth=2; ctx.fill(); ctx.stroke();
+  ctx.font='15px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(PU_ICONS[pu.type],0,0);
+  ctx.restore();
+}
+
+function drawBullet(b){
+  ctx.save(); ctx.beginPath(); ctx.arc(b.x,b.y,5,0,Math.PI*2);
+  ctx.fillStyle=b.color; ctx.shadowColor=b.color; ctx.shadowBlur=14;
+  ctx.fill(); ctx.restore();
+}
+
+function drawTank(p){
+  const isMe=p.id===myId;
+  ctx.save(); ctx.translate(p.x,p.y);
+  ctx.shadowColor=p.color; ctx.shadowBlur=isMe?16:8;
+  if(p.shield){
+    ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2);
+    ctx.strokeStyle='rgba(0,170,255,.7)'; ctx.lineWidth=3;
+    ctx.setLineDash([5,4]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(p.spawnProtect){
+    const spPulse=0.5+0.5*Math.sin(frame*0.25);
+    ctx.beginPath(); ctx.arc(0,0,30,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,255,100,'+(.4+.4*spPulse)+')';
+    ctx.lineWidth=2; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+    // small "SAFE" label drawn outside tank below
+  }
+  const bw=28,bh=22,r=5;
+  ctx.fillStyle=p.alive?p.color:'#333';
+  ctx.beginPath();
+  ctx.moveTo(-bw+r,-bh);ctx.lineTo(bw-r,-bh);ctx.arcTo(bw,-bh,bw,-bh+r,r);
+  ctx.lineTo(bw,bh-r);ctx.arcTo(bw,bh,bw-r,bh,r);
+  ctx.lineTo(-bw+r,bh);ctx.arcTo(-bw,bh,-bw,bh-r,r);
+  ctx.lineTo(-bw,-bh+r);ctx.arcTo(-bw,-bh,-bw+r,-bh,r);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.4)'; ctx.fillRect(-bw,-bh,8,bh*2); ctx.fillRect(bw-8,-bh,8,bh*2);
+  if(p.moving){
+    ctx.fillStyle='rgba(0,0,0,.3)';
+    for(let i=0;i<4;i++){
+      const off=((frame*2+i*10)%20)-10;
+      ctx.fillRect(-bw,-bh+off,6,4); ctx.fillRect(bw-6,-bh+off,6,4);
+    }
+  }
+  ctx.rotate(p.angle);
+  ctx.fillStyle=p.alive?p.color:'#444';
+  ctx.beginPath(); ctx.arc(0,0,11,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=p.alive?'#ddd':'#555';
+  ctx.fillRect(8,-4,18,8); ctx.fillRect(8,-3,22,6);
+  ctx.shadowBlur=0; ctx.restore();
+  // nametag
+  ctx.save();
+  ctx.font='bold 11px "Share Tech Mono"'; ctx.textAlign='center';
+  ctx.fillStyle=isMe?'#fff':p.color;
+  ctx.fillText(p.name+(p.isAdmin?' ★':''),p.x,p.y-33);
+  if(p.spawnProtect){
+    ctx.font='bold 9px "Share Tech Mono"';
+    ctx.fillStyle='rgba(255,255,80,.9)';
+    ctx.fillText('SAFE',p.x,p.y-22);
+  }
+  if(p.alive){
+    const bw2=40;
+    ctx.fillStyle='#111'; ctx.fillRect(p.x-bw2,p.y-45,bw2*2,4);
+    ctx.fillStyle=p.hp>50?'#44ff88':'#ff4444';
+    ctx.fillRect(p.x-bw2,p.y-45,bw2*2*(p.hp/100),4);
+  }
+  ctx.restore();
+}
+
+function loop(){
+  frame++;
+  ctx.clearRect(0,0,mapW,mapH);
+  drawBG();
+  walls.forEach(drawWall);
+  gameState.powerups.forEach(drawPU);
+  gameState.bullets.forEach(drawBullet);
+  Object.values(gameState.players).forEach(drawTank);
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
