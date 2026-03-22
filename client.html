@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 
 <!-- ── Primary SEO ── -->
 <title>Tank Wars — Free Online Multiplayer Tank Game</title>
@@ -204,6 +204,146 @@ canvas{display:block;cursor:crosshair;}
 .go-pts{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--gold);}
 .go-kd{font-size:10px;color:var(--dim);}
 #go-returning{color:var(--dim);font-size:10px;letter-spacing:3px;margin-top:18px;}
+
+/* ══════════════════════════════════════════
+   MOBILE HUD
+══════════════════════════════════════════ */
+#mobile-hud{
+  display:none;
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:20;
+}
+
+/* D-PAD — bottom left */
+#dpad{
+  position:absolute;
+  bottom:24px;
+  left:24px;
+  width:156px;
+  height:156px;
+  pointer-events:all;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.dp-btn{
+  position:absolute;
+  width:48px;
+  height:48px;
+  background:rgba(0,229,255,.12);
+  border:2px solid rgba(0,229,255,.35);
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:20px;
+  color:rgba(0,229,255,.7);
+  transition:background .08s,border-color .08s;
+  cursor:pointer;
+  touch-action:none;
+}
+.dp-btn.pressed{
+  background:rgba(0,229,255,.32);
+  border-color:rgba(0,229,255,.9);
+  color:#fff;
+}
+#dp-up   { top:0;   left:54px; }
+#dp-down { bottom:0; left:54px; }
+#dp-left { top:54px; left:0; }
+#dp-right{ top:54px; right:0; }
+#dp-center{
+  position:absolute;
+  top:54px; left:54px;
+  width:48px; height:48px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;
+}
+
+/* AIM JOYSTICK — bottom right */
+#aim-zone{
+  position:absolute;
+  bottom:16px;
+  right:100px;
+  width:140px;
+  height:140px;
+  pointer-events:all;
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+}
+#aim-base{
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:rgba(255,61,107,.06);
+  border:2px solid rgba(255,61,107,.25);
+}
+#aim-knob{
+  position:absolute;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:rgba(255,61,107,.25);
+  border:2px solid rgba(255,61,107,.6);
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  transition:transform .05s;
+  pointer-events:none;
+}
+#aim-label{
+  position:absolute;
+  bottom:-20px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:9px;
+  letter-spacing:2px;
+  color:rgba(255,61,107,.5);
+  white-space:nowrap;
+}
+
+/* FIRE BUTTON — bottom right corner */
+#fire-btn{
+  position:absolute;
+  bottom:24px;
+  right:16px;
+  width:72px;
+  height:72px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(255,61,107,.35),rgba(255,61,107,.12));
+  border:3px solid rgba(255,61,107,.55);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  pointer-events:all;
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  cursor:pointer;
+  transition:background .08s,border-color .08s,transform .08s;
+}
+#fire-btn.firing{
+  background:radial-gradient(circle,rgba(255,61,107,.7),rgba(255,61,107,.3));
+  border-color:rgba(255,61,107,1);
+  transform:scale(0.93);
+}
+
+/* On mobile hide desktop HP & powerup rows (repositioned) */
+@media (max-width:768px) and (pointer:coarse){
+  #hp-wrap{ bottom:172px !important; }
+  #pup-row{ bottom:208px !important; }
+  #lb{ width:150px !important; top:8px !important; right:8px !important; }
+  #lb .lb-sc, #lb .lb-kd{ display:none; }
+  #game-timer{ font-size:20px !important; }
+  #kf .kf-item{ font-size:9px !important; }
+}
+
+/* Show mobile HUD only on touch devices */
+@media (pointer:coarse){
+  #mobile-hud{ display:block; }
+}
 </style>
 </head>
 <body>
@@ -287,7 +427,7 @@ canvas{display:block;cursor:crosshair;}
     </div>
     <div class="card wr-right" style="align-self:flex-start;">
       <div class="section-title">Controls</div>
-      <div class="rules-box"><span>WASD</span> — Move<br><span>MOUSE</span> — Aim<br><span>HOLD LMB</span> — Fire</div>
+      <div class="rules-box"><span>WASD</span> — Move<br><span>MOUSE</span> — Aim<br><span>HOLD LMB</span> — Fire<br><span style="color:var(--green)">📱 D-pad</span> — Move (mobile)<br><span style="color:var(--green)">📱 Joystick</span> — Aim (mobile)</div>
       <div class="section-title" style="margin-top:18px;">Power-ups</div>
       <div class="rules-box"><span>🛡️</span> Shield 6s<br><span>⚡</span> Rapid fire<br><span>💥</span> Spread shot<br><span>❤️</span> +40 HP</div>
       <div class="section-title" style="margin-top:18px;">Scoring</div>
@@ -312,6 +452,30 @@ canvas{display:block;cursor:crosshair;}
       <div id="pup-row"></div>
       <div id="respawn"><div id="respawn-txt">DESTROYED</div><div id="respawn-num">3</div></div>
       <div id="corner-info">● ONLINE</div>
+
+      <!-- ══ MOBILE HUD ══ -->
+      <div id="mobile-hud">
+
+        <!-- D-Pad (left) -->
+        <div id="dpad">
+          <div class="dp-btn" id="dp-up">▲</div>
+          <div class="dp-btn" id="dp-left">◀</div>
+          <div class="dp-center" id="dp-center"></div>
+          <div class="dp-btn" id="dp-right">▶</div>
+          <div class="dp-btn" id="dp-down">▼</div>
+        </div>
+
+        <!-- Aim joystick (right) -->
+        <div id="aim-zone">
+          <div id="aim-base"></div>
+          <div id="aim-knob"></div>
+          <div id="aim-label">AIM</div>
+        </div>
+
+        <!-- Fire button (far right) -->
+        <div id="fire-btn">🔫</div>
+
+      </div>
       <div id="game-over">
         <div id="go-title">ROUND OVER</div>
         <div id="go-winner"></div>
@@ -644,8 +808,17 @@ function updateGameState(msg){
 }
 
 // ── Input ──────────────────────────────────────────────────────
+// Mobile state
+const mobileKeys={up:false,down:false,left:false,right:false};
+let mobileFireing=false;
+let aimActive=false, aimStartX=0, aimStartY=0;
+const AIM_RADIUS=54;
+
+// Keyboard
 window.addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;sendInput();});
 window.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;sendInput();});
+
+// Mouse aim (desktop)
 document.getElementById('canvas').addEventListener('mousemove',e=>{
   const r=e.target.getBoundingClientRect();
   const me=gameState.players[myId];
@@ -655,20 +828,114 @@ document.getElementById('canvas').addEventListener('mousemove',e=>{
 document.getElementById('canvas').addEventListener('mousedown',()=>{mouseDown=true;sendInput();});
 document.getElementById('canvas').addEventListener('mouseup',()=>{mouseDown=false;sendInput();});
 
+// ── D-PAD ──
+function setupDpad(){
+  const dirs=['up','down','left','right'];
+  dirs.forEach(dir=>{
+    const btn=document.getElementById('dp-'+dir);
+    if(!btn) return;
+    const press=e=>{ e.preventDefault(); mobileKeys[dir]=true; btn.classList.add('pressed'); sendInput(); };
+    const release=e=>{ e.preventDefault(); mobileKeys[dir]=false; btn.classList.remove('pressed'); sendInput(); };
+    btn.addEventListener('touchstart',press,{passive:false});
+    btn.addEventListener('touchend',release,{passive:false});
+    btn.addEventListener('touchcancel',release,{passive:false});
+    // Multi-touch: if finger slides off, release
+    btn.addEventListener('touchmove',e=>{
+      const t=e.touches[0];
+      const el=document.elementFromPoint(t.clientX,t.clientY);
+      if(el!==btn){ mobileKeys[dir]=false; btn.classList.remove('pressed'); sendInput(); }
+    },{passive:true});
+  });
+}
+
+// ── AIM JOYSTICK ──
+function setupAimJoystick(){
+  const zone=document.getElementById('aim-zone');
+  const knob=document.getElementById('aim-knob');
+  if(!zone||!knob) return;
+
+  function getCenter(){
+    const r=zone.getBoundingClientRect();
+    return {x:r.left+r.width/2, y:r.top+r.height/2};
+  }
+
+  zone.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    aimActive=true;
+    const t=e.touches[0];
+    aimStartX=t.clientX; aimStartY=t.clientY;
+    updateAim(t.clientX,t.clientY);
+  },{passive:false});
+
+  zone.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    if(!aimActive) return;
+    const t=e.touches[0];
+    updateAim(t.clientX,t.clientY);
+  },{passive:false});
+
+  const endAim=e=>{
+    e.preventDefault();
+    aimActive=false;
+    knob.style.transform='translate(-50%,-50%)';
+  };
+  zone.addEventListener('touchend',endAim,{passive:false});
+  zone.addEventListener('touchcancel',endAim,{passive:false});
+
+  function updateAim(cx,cy){
+    const c=getCenter();
+    const dx=cx-c.x, dy=cy-c.y;
+    const dist=Math.hypot(dx,dy);
+    const clamp=Math.min(dist,AIM_RADIUS);
+    const nx=clamp===0?0:dx/dist*clamp;
+    const ny=clamp===0?0:dy/dist*clamp;
+    knob.style.transform=`translate(calc(-50% + ${nx}px), calc(-50% + ${ny}px))`;
+    if(dist>6){
+      mouseAngle=Math.atan2(dy,dx);
+      sendInput();
+    }
+  }
+}
+
+// ── FIRE BUTTON ──
+function setupFireBtn(){
+  const btn=document.getElementById('fire-btn');
+  if(!btn) return;
+  btn.addEventListener('touchstart',e=>{ e.preventDefault(); mobileFireing=true; btn.classList.add('firing'); sendInput(); },{passive:false});
+  btn.addEventListener('touchend',e=>{ e.preventDefault(); mobileFireing=false; btn.classList.remove('firing'); sendInput(); },{passive:false});
+  btn.addEventListener('touchcancel',e=>{ e.preventDefault(); mobileFireing=false; btn.classList.remove('firing'); sendInput(); },{passive:false});
+}
+
+// Init mobile controls
+setupDpad();
+setupAimJoystick();
+setupFireBtn();
+
 function sendInput(){
   if(!ws||ws.readyState!==WebSocket.OPEN) return;
   const inp={type:'input',
-    up:!!(keys['w']||keys['arrowup']),down:!!(keys['s']||keys['arrowdown']),
-    left:!!(keys['a']||keys['arrowleft']),right:!!(keys['d']||keys['arrowright']),
-    shooting:mouseDown,angle:mouseAngle};
+    up:!!(keys['w']||keys['arrowup']||mobileKeys.up),
+    down:!!(keys['s']||keys['arrowdown']||mobileKeys.down),
+    left:!!(keys['a']||keys['arrowleft']||mobileKeys.left),
+    right:!!(keys['d']||keys['arrowright']||mobileKeys.right),
+    shooting:mouseDown||mobileFireing,
+    angle:mouseAngle};
   if(JSON.stringify(inp)!==JSON.stringify(lastInput)){ws.send(JSON.stringify(inp));lastInput=inp;}
 }
 
 // ── Canvas ─────────────────────────────────────────────────────
 const canvas=document.getElementById('canvas');
 const ctx=canvas.getContext('2d');
+function isMobile(){ return window.matchMedia('(pointer:coarse)').matches; }
 function resizeCanvas(){
-  const scale=Math.min((window.innerWidth-210)/mapW,(window.innerHeight-28)/mapH,1);
+  let scale;
+  if(isMobile()){
+    // On mobile use full screen width, leave bottom for controls
+    const ctrlH=180;
+    scale=Math.min(window.innerWidth/mapW,(window.innerHeight-ctrlH)/mapH);
+  } else {
+    scale=Math.min((window.innerWidth-210)/mapW,(window.innerHeight-28)/mapH,1);
+  }
   canvas.width=mapW; canvas.height=mapH;
   canvas.style.width=(mapW*scale)+'px'; canvas.style.height=(mapH*scale)+'px';
 }
