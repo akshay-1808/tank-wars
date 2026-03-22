@@ -1,13 +1,13 @@
 const http = require('http');
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-  const filePath = path.join(__dirname, 'client.html');
-  fs.readFile(filePath, (err, data) => {
+  const fp = path.join(__dirname, 'client.html');
+  fs.readFile(fp, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(data);
@@ -37,7 +37,8 @@ const WALLS = [
 ];
 
 // ── Lobby store ────────────────────────────────────────────────
-const lobbies = {};
+const lobbies = {};          // all lobbies keyed by id
+const lobbyWatchers = new Set(); // ws connections on the home screen watching lobby list
 
 function generateLobbyId() {
   let id;
@@ -47,9 +48,73 @@ function generateLobbyId() {
 }
 function uid() { return Math.random().toString(36).substr(2, 8); }
 
-// ── Helpers ────────────────────────────────────────────────────
+// ── Public lobby helpers ───────────────────────────────────────
+// Find a public waiting lobby with space, or create one
+function getOrCreatePublicLobby(name) {
+  // Find waiting public lobby with room
+  const available = Object.values(lobbies).find(l =>
+    l.isPublic &&
+    l.state === 'waiting' &&
+    Object.keys(l.players).length < MAX_PLAYERS
+  );
+  if (available) return available;
+
+  // Create new public lobby
+  const lid = generateLobbyId();
+  lobbies[lid] = makeLobby(lid, null, true); // null adminId — set on first join
+  console.log(`[Public Lobby ${lid}] Auto-created`);
+  return lobbies[lid];
+}
+
+function makeLobby(id, adminId, isPublic) {
+  return {
+    id, adminId, isPublic: !!isPublic,
+    state: 'waiting',
+    players: {}, bullets: [], powerups: [],
+    nextBullet: 0, nextPU: 0, timers: [],
+    gameEndTime: 0,
+    createdAt: Date.now()
+  };
+}
+
+// Broadcast public lobby list to all watchers
+function broadcastLobbyBrowser() {
+  const list = buildLobbyList();
+  const msg = JSON.stringify({ type: 'lobby_browser', lobbies: list });
+  lobbyWatchers.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+  });
+}
+
+function buildLobbyList() {
+  return Object.values(lobbies)
+    .filter(l => l.isPublic)
+    .map(l => {
+      const players = Object.values(l.players);
+      const host = players.find(p => p.isAdmin) || players[0];
+      return {
+        id: l.id,
+        hostName: host ? host.name : 'Empty',
+        playerCount: players.length,
+        maxPlayers: MAX_PLAYERS,
+        state: l.state,
+        timeLeft: l.state === 'playing' ? Math.max(0, l.gameEndTime - Date.now()) : null
+      };
+    })
+    .sort((a, b) => {
+      // waiting first, then by player count desc
+      if (a.state === 'waiting' && b.state !== 'waiting') return -1;
+      if (b.state === 'waiting' && a.state !== 'waiting') return 1;
+      return b.playerCount - a.playerCount;
+    });
+}
+
+// ── Helpers ───────────────────────────────────────────────────
 function spawnPos() {
-  const s = [{x:80,y:80},{x:MAP_W-80,y:80},{x:80,y:MAP_H-80},{x:MAP_W-80,y:MAP_H-80},{x:MAP_W/2,y:MAP_H/2}];
+  const s = [
+    {x:80,y:80},{x:MAP_W-80,y:80},{x:80,y:MAP_H-80},
+    {x:MAP_W-80,y:MAP_H-80},{x:MAP_W/2,y:MAP_H/2}
+  ];
   return s[Math.floor(Math.random()*s.length)];
 }
 function rectOverlap(x,y,r,w) {
@@ -75,18 +140,32 @@ function publicPlayers(lobby) {
     score:p.score, kills:p.kills, deaths:p.deaths,
     shield:p.shield, rapidfire:p.rapidfire, spread:p.spread,
     moving:p.moving, isAdmin:p.isAdmin, ready:p.ready,
-    spawnProtect:p.spawnProtectUntil&&Date.now()<p.spawnProtectUntil
+    spawnProtect: p.spawnProtectUntil && Date.now() < p.spawnProtectUntil
   }));
 }
 function broadcastLobbyState(lobby) {
   bcast(lobby, {
     type:'lobby_update', lobbyId:lobby.id,
     adminId:lobby.adminId, state:lobby.state,
+    isPublic:lobby.isPublic,
     players:publicPlayers(lobby)
   });
 }
 
-// ── Game ────────────────────────────────────────────────────────
+function makePlayerObj(pid, ws, name, color, isAdmin) {
+  return {
+    id:pid, ws, name, color,
+    x:80, y:80, angle:0, hp:MAX_HP, alive:true,
+    score:0, kills:0, deaths:0,
+    shield:false, rapidfire:false, spread:false,
+    rfTimer:0, shieldTimer:0, lastShot:0, moving:false,
+    up:false, down:false, left:false, right:false,
+    shooting:false, mouseAngle:0,
+    isAdmin, ready:false, spawnProtectUntil:0
+  };
+}
+
+// ── Game lifecycle ─────────────────────────────────────────────
 function spawnPU(lobby) {
   const type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
   let x,y,t=0;
@@ -97,9 +176,9 @@ function spawnPU(lobby) {
 
 function startGame(lobby) {
   lobby.state = 'playing';
-  let ci=0;
-  Object.values(lobby.players).forEach(p=>{
-    const sp=spawnPos();
+  let ci = 0;
+  Object.values(lobby.players).forEach(p => {
+    const sp = spawnPos();
     p.x=sp.x; p.y=sp.y; p.angle=0;
     p.hp=MAX_HP; p.alive=true; p.score=0; p.kills=0; p.deaths=0;
     p.shield=false; p.rapidfire=false; p.spread=false;
@@ -108,101 +187,150 @@ function startGame(lobby) {
     p.ready=false;
     p.spawnProtectUntil = Date.now() + SPAWN_PROTECTION_MS;
   });
-  lobby.bullets=[]; lobby.powerups=[]; lobby.nextBullet=0; lobby.nextPU=0;
+  lobby.bullets=[]; lobby.powerups=[];
+  lobby.nextBullet=0; lobby.nextPU=0;
   lobby.gameEndTime = Date.now() + GAME_DURATION_MS;
   spawnPU(lobby); spawnPU(lobby);
 
-  bcast(lobby,{type:'game_start',lobbyId:lobby.id,players:publicPlayers(lobby),walls:WALLS,mapW:MAP_W,mapH:MAP_H,gameEndTime:lobby.gameEndTime});
+  bcast(lobby, {
+    type:'game_start', lobbyId:lobby.id,
+    players:publicPlayers(lobby),
+    walls:WALLS, mapW:MAP_W, mapH:MAP_H,
+    gameEndTime:lobby.gameEndTime,
+    isPublic:lobby.isPublic
+  });
 
-  const t1=setInterval(()=>{ if(!lobbies[lobby.id]||lobby.state!=='playing'){clearInterval(t1);return;} spawnPU(lobby); },POWERUP_SPAWN_INTERVAL);
-  const t2=setInterval(()=>{ if(!lobbies[lobby.id]){clearInterval(t2);clearInterval(t1);return;} if(lobby.state==='playing') tick(lobby); },1000/60);
-  // Game timer - end after 10 min
-  const t3=setTimeout(()=>{
-    if(!lobbies[lobby.id]||lobby.state!=='playing') return;
+  const t1 = setInterval(() => {
+    if (!lobbies[lobby.id] || lobby.state!=='playing') { clearInterval(t1); return; }
+    spawnPU(lobby);
+  }, POWERUP_SPAWN_INTERVAL);
+
+  const t2 = setInterval(() => {
+    if (!lobbies[lobby.id]) { clearInterval(t2); clearInterval(t1); return; }
+    if (lobby.state==='playing') tick(lobby);
+  }, 1000/60);
+
+  const t3 = setTimeout(() => {
+    if (!lobbies[lobby.id] || lobby.state!=='playing') return;
     endGameByTimer(lobby);
   }, GAME_DURATION_MS);
-  lobby.timers=[t1,t2,t3];
+
+  lobby.timers = [t1, t2, t3];
+  broadcastLobbyBrowser(); // update public browser
 }
 
 function endGameByTimer(lobby) {
   const sorted = Object.values(lobby.players).sort((a,b)=>b.score-a.score);
   const winner = sorted[0] || null;
-  bcast(lobby,{type:'game_over',winner:winner?{name:winner.name,color:winner.color,score:winner.score}:null,scores:sorted.map(p=>({name:p.name,color:p.color,score:p.score,kills:p.kills,deaths:p.deaths}))});
-  setTimeout(()=>{ if(lobbies[lobby.id]) stopGame(lobby); }, 5000);
+  bcast(lobby, {
+    type:'game_over',
+    winner: winner ? {name:winner.name,color:winner.color,score:winner.score} : null,
+    scores: sorted.map(p=>({name:p.name,color:p.color,score:p.score,kills:p.kills,deaths:p.deaths}))
+  });
+  setTimeout(() => { if (lobbies[lobby.id]) stopGame(lobby); }, 5000);
 }
 
 function stopGame(lobby) {
-  lobby.state='waiting';
-  lobby.timers.forEach(t=>clearInterval(t));
-  lobby.timers=[];
-  lobby.bullets=[]; lobby.powerups=[];
-  Object.values(lobby.players).forEach(p=>{p.ready=false;});
+  lobby.state = 'waiting';
+  lobby.timers.forEach(t => clearInterval(t));
+  lobby.timers = [];
+  lobby.bullets = []; lobby.powerups = [];
+  Object.values(lobby.players).forEach(p => { p.ready = false; });
   broadcastLobbyState(lobby);
-  bcast(lobby,{type:'game_stopped'});
+  bcast(lobby, {type:'game_stopped'});
+  broadcastLobbyBrowser();
 }
 
+function removePlayerFromLobby(lobby, playerId) {
+  const p = lobby.players[playerId];
+  const wasAdmin = p && p.isAdmin;
+  delete lobby.players[playerId];
+
+  if (Object.keys(lobby.players).length === 0) {
+    lobby.timers.forEach(t => clearInterval(t));
+    delete lobbies[lobby.id];
+    console.log(`[Lobby ${lobby.id}] Destroyed (empty)`);
+    broadcastLobbyBrowser();
+    return;
+  }
+
+  if (wasAdmin) {
+    const next = Object.values(lobby.players)[0];
+    next.isAdmin = true;
+    lobby.adminId = next.id;
+    if (lobby.state === 'playing') stopGame(lobby);
+    else broadcastLobbyState(lobby);
+    send(next.ws, {type:'promoted', msg:'You are now the host!'});
+  } else {
+    broadcastLobbyState(lobby);
+  }
+  broadcastLobbyBrowser();
+}
+
+// ── Game tick ─────────────────────────────────────────────────
 function tick(lobby) {
-  const now=Date.now();
-  const pl=lobby.players;
+  const now = Date.now();
+  const pl  = lobby.players;
 
   for (const p of Object.values(pl)) {
     if (!p.alive) continue;
-    let dx=0,dy=0;
-    if(p.up) dy-=TANK_SPEED; if(p.down) dy+=TANK_SPEED;
-    if(p.left) dx-=TANK_SPEED; if(p.right) dx+=TANK_SPEED;
-    if(dx||dy){
+    let dx=0, dy=0;
+    if(p.up)   dy -= TANK_SPEED;
+    if(p.down)  dy += TANK_SPEED;
+    if(p.left)  dx -= TANK_SPEED;
+    if(p.right) dx += TANK_SPEED;
+    if (dx||dy) {
       const len=Math.hypot(dx,dy); dx=dx/len*TANK_SPEED; dy=dy/len*TANK_SPEED;
-      let nx=Math.max(TANK_RADIUS,Math.min(MAP_W-TANK_RADIUS,p.x+dx));
-      let ny=Math.max(TANK_RADIUS,Math.min(MAP_H-TANK_RADIUS,p.y+dy));
-      if(!collidesWall(nx,p.y,TANK_RADIUS)) p.x=nx;
-      if(!collidesWall(p.x,ny,TANK_RADIUS)) p.y=ny;
+      const nx=Math.max(TANK_RADIUS,Math.min(MAP_W-TANK_RADIUS,p.x+dx));
+      const ny=Math.max(TANK_RADIUS,Math.min(MAP_H-TANK_RADIUS,p.y+dy));
+      if (!collidesWall(nx,p.y,TANK_RADIUS)) p.x=nx;
+      if (!collidesWall(p.x,ny,TANK_RADIUS)) p.y=ny;
       p.moving=true;
     } else { p.moving=false; }
-    p.angle=p.mouseAngle;
+    p.angle = p.mouseAngle;
 
-    const cd=p.rapidfire?FIRE_COOLDOWN_RAPID:FIRE_COOLDOWN_NORMAL;
-    if(p.shooting && now-p.lastShot>cd){
+    const cd = p.rapidfire ? FIRE_COOLDOWN_RAPID : FIRE_COOLDOWN_NORMAL;
+    if (p.shooting && now-p.lastShot>cd) {
       p.lastShot=now;
-      if(p.spread){
-        for(let a=-1;a<=1;a++){
-          const ang=p.angle+a*0.25;
-          lobby.bullets.push({id:lobby.nextBullet++,ownerId:p.id,
-            x:p.x+Math.cos(ang)*22,y:p.y+Math.sin(ang)*22,
-            vx:Math.cos(ang)*BULLET_SPEED,vy:Math.sin(ang)*BULLET_SPEED,
-            color:p.color,life:80});
-        }
-      } else {
-        lobby.bullets.push({id:lobby.nextBullet++,ownerId:p.id,
-          x:p.x+Math.cos(p.angle)*22,y:p.y+Math.sin(p.angle)*22,
-          vx:Math.cos(p.angle)*BULLET_SPEED,vy:Math.sin(p.angle)*BULLET_SPEED,
-          color:p.color,life:80});
+      const angles = p.spread ? [-0.25,0,0.25] : [0];
+      for (const da of angles) {
+        const ang = p.angle+da;
+        lobby.bullets.push({
+          id:lobby.nextBullet++, ownerId:p.id,
+          x:p.x+Math.cos(ang)*22, y:p.y+Math.sin(ang)*22,
+          vx:Math.cos(ang)*BULLET_SPEED, vy:Math.sin(ang)*BULLET_SPEED,
+          color:p.color, life:80
+        });
       }
     }
-    if(p.shieldTimer&&now>p.shieldTimer){p.shield=false;p.shieldTimer=0;}
-    if(p.rfTimer&&now>p.rfTimer){p.rapidfire=false;p.rfTimer=0;}
+    if (p.shieldTimer && now>p.shieldTimer) { p.shield=false; p.shieldTimer=0; }
+    if (p.rfTimer && now>p.rfTimer)         { p.rapidfire=false; p.rfTimer=0; }
   }
 
-  lobby.bullets=lobby.bullets.filter(b=>{
+  lobby.bullets = lobby.bullets.filter(b => {
     b.x+=b.vx; b.y+=b.vy; b.life--;
-    if(b.life<=0||b.x<0||b.x>MAP_W||b.y<0||b.y>MAP_H) return false;
-    if(collidesWall(b.x,b.y,BULLET_RADIUS)) return false;
-    for(const p of Object.values(pl)){
-      if(!p.alive||p.id===b.ownerId) continue;
-      if(dist(b,p)<TANK_RADIUS+BULLET_RADIUS){
-        if(!p.shield && !(p.spawnProtectUntil && now < p.spawnProtectUntil)){
-          p.hp-=25;
-          if(p.hp<=0){
+    if (b.life<=0||b.x<0||b.x>MAP_W||b.y<0||b.y>MAP_H) return false;
+    if (collidesWall(b.x,b.y,BULLET_RADIUS)) return false;
+    for (const p of Object.values(pl)) {
+      if (!p.alive || p.id===b.ownerId) continue;
+      if (dist(b,p) < TANK_RADIUS+BULLET_RADIUS) {
+        const protected_ = p.shield || (p.spawnProtectUntil && now<p.spawnProtectUntil);
+        if (!protected_) {
+          p.hp -= 25;
+          if (p.hp<=0) {
             p.hp=0; p.alive=false; p.deaths++;
             const sh=pl[b.ownerId];
-            if(sh){sh.kills++;sh.score+=100;}
-            bcast(lobby,{type:'kill_feed',killer:sh?sh.name:'?',killerColor:sh?sh.color:'#fff',victim:p.name,victimColor:p.color});
-            setTimeout(()=>{
-              if(!lobbies[lobby.id]||!pl[p.id]) return;
+            if (sh) { sh.kills++; sh.score+=100; }
+            bcast(lobby,{type:'kill_feed',
+              killer:sh?sh.name:'?', killerColor:sh?sh.color:'#fff',
+              victim:p.name, victimColor:p.color});
+            setTimeout(() => {
+              if (!lobbies[lobby.id]||!pl[p.id]) return;
               const sp=spawnPos();
-              p.x=sp.x;p.y=sp.y;p.hp=MAX_HP;p.alive=true;
-              p.shield=false;p.rapidfire=false;p.spread=false;
+              p.x=sp.x; p.y=sp.y; p.hp=MAX_HP; p.alive=true;
+              p.shield=false; p.rapidfire=false; p.spread=false;
               p.spawnProtectUntil=Date.now()+SPAWN_PROTECTION_MS;
-            },RESPAWN_TIME);
+            }, RESPAWN_TIME);
           }
         }
         return false;
@@ -211,14 +339,14 @@ function tick(lobby) {
     return true;
   });
 
-  lobby.powerups=lobby.powerups.filter(pu=>{
-    for(const p of Object.values(pl)){
-      if(!p.alive) continue;
-      if(dist(p,pu)<TANK_RADIUS+16){
-        if(pu.type==='hp') p.hp=Math.min(MAX_HP,p.hp+40);
-        if(pu.type==='shield'){p.shield=true;p.shieldTimer=now+6000;}
-        if(pu.type==='rapidfire'){p.rapidfire=true;p.rfTimer=now+6000;}
-        if(pu.type==='spread'){p.spread=true;setTimeout(()=>{if(pl[p.id])p.spread=false;},6000);}
+  lobby.powerups = lobby.powerups.filter(pu => {
+    for (const p of Object.values(pl)) {
+      if (!p.alive) continue;
+      if (dist(p,pu)<TANK_RADIUS+16) {
+        if (pu.type==='hp')        p.hp=Math.min(MAX_HP,p.hp+40);
+        if (pu.type==='shield')    { p.shield=true; p.shieldTimer=now+6000; }
+        if (pu.type==='rapidfire') { p.rapidfire=true; p.rfTimer=now+6000; }
+        if (pu.type==='spread')    { p.spread=true; setTimeout(()=>{if(pl[p.id])p.spread=false;},6000); }
         p.score+=10; return false;
       }
     }
@@ -234,128 +362,143 @@ function tick(lobby) {
   });
 }
 
-// ── WebSocket ──────────────────────────────────────────────────
+// ── WebSocket handler ─────────────────────────────────────────
 wss.on('connection', (ws) => {
-  let myId=null, myLobby=null;
+  let myId=null, myLobby=null, watching=false;
 
   ws.on('message', (raw) => {
     try {
-      const msg=JSON.parse(raw);
+      const msg = JSON.parse(raw);
 
-      if (msg.type==='create_lobby') {
-        const name=(msg.name||'Admin').substring(0,12);
-        const lid=generateLobbyId();
-        const pid=uid();
-        myId=pid; myLobby=lid;
-        lobbies[lid]={
-          id:lid,adminId:pid,state:'waiting',
-          players:{},bullets:[],powerups:[],
-          nextBullet:0,nextPU:0,timers:[]
-        };
-        lobbies[lid].players[pid]={
-          id:pid,ws,name,color:COLORS[0],
-          x:80,y:80,angle:0,hp:MAX_HP,alive:true,
-          score:0,kills:0,deaths:0,
-          shield:false,rapidfire:false,spread:false,
-          rfTimer:0,shieldTimer:0,lastShot:0,moving:false,
-          up:false,down:false,left:false,right:false,
-          shooting:false,mouseAngle:0,isAdmin:true,ready:false
-        };
-        send(ws,{type:'created',lobbyId:lid,playerId:pid,isAdmin:true});
-        broadcastLobbyState(lobbies[lid]);
-        console.log(`[Lobby ${lid}] Created by "${name}"`);
+      // ── Watch lobby browser (home screen) ──
+      if (msg.type==='watch_lobbies') {
+        watching=true;
+        lobbyWatchers.add(ws);
+        send(ws,{type:'lobby_browser',lobbies:buildLobbyList()});
+        return;
+      }
+      if (msg.type==='unwatch_lobbies') {
+        watching=false;
+        lobbyWatchers.delete(ws);
         return;
       }
 
+      // ── Quick Play (auto-join public lobby) ──
+      if (msg.type==='quick_play') {
+        const name=(msg.name||'Player').substring(0,12);
+        const lobby=getOrCreatePublicLobby(name);
+        const pid=uid();
+        const ci=Object.keys(lobby.players).length;
+        const isFirstPlayer=(ci===0);
+        myId=pid; myLobby=lobby.id;
+
+        if (isFirstPlayer) lobby.adminId=pid;
+
+        lobby.players[pid]=makePlayerObj(pid,ws,name,COLORS[ci%COLORS.length],isFirstPlayer);
+
+        lobbyWatchers.delete(ws); watching=false;
+        send(ws,{type:'joined',lobbyId:lobby.id,playerId:pid,isAdmin:isFirstPlayer,adminId:lobby.adminId,isPublic:true});
+        broadcastLobbyState(lobby);
+        broadcastLobbyBrowser();
+        console.log(`[Public ${lobby.id}] "${name}" quick-joined (${Object.keys(lobby.players).length}/${MAX_PLAYERS})`);
+        return;
+      }
+
+      // ── Create private lobby ──
+      if (msg.type==='create_lobby') {
+        const name=(msg.name||'Host').substring(0,12);
+        const lid=generateLobbyId();
+        const pid=uid();
+        myId=pid; myLobby=lid;
+        lobbies[lid]=makeLobby(lid,pid,false);
+        lobbies[lid].players[pid]=makePlayerObj(pid,ws,name,COLORS[0],true);
+        lobbyWatchers.delete(ws); watching=false;
+        send(ws,{type:'created',lobbyId:lid,playerId:pid,isAdmin:true,isPublic:false});
+        broadcastLobbyState(lobbies[lid]);
+        console.log(`[Private ${lid}] Created by "${name}"`);
+        return;
+      }
+
+      // ── Join private lobby by ID ──
       if (msg.type==='join_lobby') {
         const lid=String(msg.lobbyId).trim();
         const name=(msg.name||'Player').substring(0,12);
         const lobby=lobbies[lid];
-        if(!lobby){send(ws,{type:'error',msg:'Lobby not found. Double-check the 4-digit ID.'});return;}
-        if(lobby.state==='playing'){send(ws,{type:'error',msg:'Game in progress. Wait for the next round.'});return;}
-        if(Object.keys(lobby.players).length>=MAX_PLAYERS){send(ws,{type:'error',msg:'Lobby is full (max 5 players).'});return;}
+        if (!lobby)                                    { send(ws,{type:'error',msg:'Lobby not found. Check the ID.'}); return; }
+        if (lobby.isPublic)                            { send(ws,{type:'error',msg:'That is a public lobby. Use Quick Play instead.'}); return; }
+        if (lobby.state==='playing')                   { send(ws,{type:'error',msg:'Game already in progress.'}); return; }
+        if (Object.keys(lobby.players).length>=MAX_PLAYERS){ send(ws,{type:'error',msg:'Lobby is full (max 5).'}); return; }
         const pid=uid();
         const ci=Object.keys(lobby.players).length;
         myId=pid; myLobby=lid;
-        lobby.players[pid]={
-          id:pid,ws,name,color:COLORS[ci%COLORS.length],
-          x:80,y:80,angle:0,hp:MAX_HP,alive:true,
-          score:0,kills:0,deaths:0,
-          shield:false,rapidfire:false,spread:false,
-          rfTimer:0,shieldTimer:0,lastShot:0,moving:false,
-          up:false,down:false,left:false,right:false,
-          shooting:false,mouseAngle:0,isAdmin:false,ready:false
-        };
-        send(ws,{type:'joined',lobbyId:lid,playerId:pid,isAdmin:false,adminId:lobby.adminId});
+        lobby.players[pid]=makePlayerObj(pid,ws,name,COLORS[ci%COLORS.length],false);
+        lobbyWatchers.delete(ws); watching=false;
+        send(ws,{type:'joined',lobbyId:lid,playerId:pid,isAdmin:false,adminId:lobby.adminId,isPublic:false});
         broadcastLobbyState(lobby);
-        console.log(`[Lobby ${lid}] "${name}" joined (${Object.keys(lobby.players).length}/${MAX_PLAYERS})`);
+        console.log(`[Private ${lid}] "${name}" joined (${Object.keys(lobby.players).length}/${MAX_PLAYERS})`);
         return;
       }
 
-      if(!myId||!myLobby) return;
+      // ── In-lobby messages ──
+      if (!myId||!myLobby) return;
       const lobby=lobbies[myLobby];
-      if(!lobby) return;
+      if (!lobby) return;
       const p=lobby.players[myId];
-      if(!p) return;
+      if (!p) return;
 
-      if(msg.type==='input'){
-        p.up=msg.up;p.down=msg.down;p.left=msg.left;p.right=msg.right;
-        p.shooting=msg.shooting;p.mouseAngle=msg.angle;
+      if (msg.type==='input') {
+        p.up=msg.up; p.down=msg.down; p.left=msg.left; p.right=msg.right;
+        p.shooting=msg.shooting; p.mouseAngle=msg.angle;
       }
-      else if(msg.type==='set_ready'){
+      else if (msg.type==='set_ready') {
         p.ready=!!msg.ready;
         broadcastLobbyState(lobby);
+
+        // Public lobby: auto-start when all players ready AND ≥2
+        if (lobby.isPublic && lobby.state==='waiting') {
+          const all=Object.values(lobby.players);
+          if (all.length>=2 && all.every(pl=>pl.isAdmin||pl.ready)) {
+            setTimeout(()=>{ if(lobbies[lobby.id]&&lobby.state==='waiting') startGame(lobby); },1000);
+          }
+        }
       }
-      else if(msg.type==='start_game'){
-        if(myId!==lobby.adminId){send(ws,{type:'error',msg:'Only the admin can start the game.'});return;}
-        if(Object.keys(lobby.players).length<2){send(ws,{type:'error',msg:'Need at least 2 players to start.'});return;}
+      else if (msg.type==='start_game') {
+        if (myId!==lobby.adminId)                          { send(ws,{type:'error',msg:'Only the host can start.'}); return; }
+        if (Object.keys(lobby.players).length<2)           { send(ws,{type:'error',msg:'Need at least 2 players.'}); return; }
         startGame(lobby);
-        console.log(`[Lobby ${myLobby}] Game started`);
       }
-      else if(msg.type==='stop_game'){
-        if(myId!==lobby.adminId) return;
+      else if (msg.type==='stop_game') {
+        if (myId!==lobby.adminId) return;
         stopGame(lobby);
       }
-      else if(msg.type==='kick_player'){
-        if(myId!==lobby.adminId) return;
+      else if (msg.type==='kick_player') {
+        if (myId!==lobby.adminId) return;
         const target=lobby.players[msg.targetId];
-        if(target){
-          send(target.ws,{type:'kicked',msg:'You were removed by the admin.'});
+        if (target) {
+          send(target.ws,{type:'kicked',msg:'Removed by the host.'});
           setTimeout(()=>target.ws.close(),200);
         }
       }
-    } catch(e){ console.error('WS error:',e.message); }
+    } catch(e) { console.error('WS error:',e.message); }
   });
 
-  ws.on('close', ()=>{
-    if(!myId||!myLobby) return;
+  ws.on('close', () => {
+    if (watching) { lobbyWatchers.delete(ws); }
+    if (!myId||!myLobby) return;
     const lobby=lobbies[myLobby];
-    if(!lobby) return;
-    const p=lobby.players[myId];
-    const wasAdmin=p&&p.isAdmin;
-    delete lobby.players[myId];
-    console.log(`[Lobby ${myLobby}] Player disconnected`);
-    if(Object.keys(lobby.players).length===0){
-      lobby.timers.forEach(t=>clearInterval(t));
-      delete lobbies[myLobby];
-      console.log(`[Lobby ${myLobby}] Destroyed (empty)`);
-      return;
-    }
-    if(wasAdmin){
-      const next=Object.values(lobby.players)[0];
-      next.isAdmin=true; lobby.adminId=next.id;
-      if(lobby.state==='playing') stopGame(lobby);
-      send(next.ws,{type:'promoted',msg:'Admin left. You are now the admin!'});
-    }
-    broadcastLobbyState(lobby);
+    if (!lobby) return;
+    console.log(`[Lobby ${myLobby}] Player "${lobby.players[myId]&&lobby.players[myId].name}" disconnected`);
+    removePlayerFromLobby(lobby, myId);
   });
 });
 
-server.listen(PORT, '0.0.0.0', ()=>{
+// Broadcast lobby list every 5 seconds for time-remaining updates
+setInterval(broadcastLobbyBrowser, 5000);
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log('\n🎮  TANK WARS — ONLINE SERVER');
   console.log('================================');
   console.log(`🌐  Listening on port ${PORT}`);
-  console.log('\n➊  Deploy to Railway → share the public URL');
-  console.log('➋  Host creates lobby → shares 4-digit ID');
-  console.log('➌  Friends join from anywhere in the world\n');
+  console.log('Public lobbies: auto-created, fill to 5 then new one');
+  console.log('Private lobbies: 4-digit ID, invite only\n');
 });
